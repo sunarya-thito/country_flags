@@ -257,6 +257,14 @@ class _FlagImage extends StatelessWidget {
         si: ScalableImage.blank(),
       );
     }
+    final preloaded = _FlagSICacheStorage._instance.getPrelodedFlag(flagCode!);
+    if (preloaded != null) {
+      return ScalableImageWidget(
+        key: const Key('svgFlag'),
+        si: preloaded,
+        fit: fit,
+      );
+    }
     return ScalableImageWidget.fromSISource(
       key: const Key('svgFlag'),
       si: cache
@@ -272,8 +280,38 @@ class _FlagImage extends StatelessWidget {
 
 /// Stores the flag image in memory.
 void loadCountryFlagAsset(String flagCode, Uint8List bytes) {
-  final source = _PreloadedScalableImageSource(flagCode, bytes);
-  _FlagSICacheStorage._instance._cache[flagCode] = source;
+  final image = ScalableImage.fromSIBytes(bytes);
+  _FlagSICacheStorage._instance._preloaded[flagCode] = image;
+}
+
+Future<void> loadAllCountryFlags() async {
+  const assetPath = 'packages/country_flags/res/all.bin';
+  final bytes = await rootBundle.load(assetPath);
+  final data = bytes.buffer.asUint8List();
+  final buffer = ByteData.sublistView(data);
+
+  // File structure:
+  // 2 bytes: number of flags
+  // 1 bytes: flag code length
+  // n bytes: flag code
+  // 4 bytes: flag data length
+  // n bytes: flag data
+
+  final numberOfFlags = buffer.getUint16(0);
+  var offset = 2;
+  for (var i = 0; i < numberOfFlags; i++) {
+    final flagCodeLength = buffer.getUint8(offset);
+    offset += 1;
+    final flagCodeCodepoints =
+        buffer.buffer.asUint8List(offset, flagCodeLength);
+    final flagCode = String.fromCharCodes(flagCodeCodepoints);
+    offset += flagCodeLength;
+    final flagDataLength = buffer.getUint32(offset);
+    offset += 4;
+    final flagData = buffer.buffer.asUint8List(offset, flagDataLength);
+    offset += flagDataLength;
+    loadCountryFlagAsset(flagCode, flagData);
+  }
 }
 
 /// Preload the flag from a country code or a language code.
@@ -311,7 +349,12 @@ class _FlagSICacheStorage {
 
   static final _FlagSICacheStorage _instance = _FlagSICacheStorage._();
 
+  final Map<String, ScalableImage> _preloaded = {};
   final Map<String, ScalableImageSource> _cache = {};
+
+  ScalableImage? getPrelodedFlag(String flagCode) {
+    return _preloaded[flagCode];
+  }
 
   /// Get the flag ScalableImageSource.
   /// If the flag is not cached, it will be loaded from the asset.
@@ -329,32 +372,6 @@ class _FlagSICacheStorage {
     _cache[flagCode] = source;
     return source;
   }
-}
-
-class _PreloadedScalableImageSource extends ScalableImageSource {
-  _PreloadedScalableImageSource(this.flagCode, this.bytes);
-
-  final String flagCode;
-  final Uint8List bytes;
-  @override
-  Future<ScalableImage> createSI() {
-    return Future.value(ScalableImage.fromSIBytes(bytes));
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    if (other is _PreloadedScalableImageSource) {
-      return flagCode == other.flagCode;
-    }
-    return false;
-  }
-
-  @override
-  int get hashCode => flagCode.hashCode;
-
-  @override
-  String toString() => 'PreloadedScalableImageSource{flagCode: $flagCode}';
 }
 
 class _CachedScalableImageSource extends ScalableImageSource {

@@ -7,6 +7,8 @@ void main() async {
     await WidgetsFlutterBinding.ensureInitialized();
     await preloadAllCountryFlags();
   }
+  await WidgetsFlutterBinding.ensureInitialized();
+  await loadAllCountryFlags();
   runApp(const MyApp());
 }
 
